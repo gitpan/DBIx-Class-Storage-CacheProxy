@@ -1,5 +1,6 @@
 Revision history for DBIx-Class-Storage-CacheProxy
 
+0.03	Updated POD
 0.02	Added support for Cache::FastMmap
 	Fixed bugs
 	Added some test

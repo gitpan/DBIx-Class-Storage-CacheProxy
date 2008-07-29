@@ -17,11 +17,11 @@ DBIx::Class::Storage::CacheProxy - Caching layer for DBIx::Class
 
 =head1 VERSION
 
-Version 0.02
+Version 0.03
 
 =cut
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 
 
@@ -34,8 +34,25 @@ Caching subsystem for DBIx::Class.
     use parent qw/DBIx::Class::Schema/;
 
     ...
-    __PACKAGE__->storage_type('::CacheProxy'); # That's all (:
+    __PACKAGE__->storage_type('::CacheProxy');
     ...
+    $schema->connect("dbi:...something...",{cache=>
+        [
+	  Memcached=>{
+            servers=>[qw/127.0.0.1:11211/]
+	  }
+        ]
+    })
+
+or
+
+    $schema->connect("dbi:...something...",{cache=>
+        [
+	  FastMmap=>{
+	  }
+        ]
+    })
+
 
 =head1 NOTE
 
