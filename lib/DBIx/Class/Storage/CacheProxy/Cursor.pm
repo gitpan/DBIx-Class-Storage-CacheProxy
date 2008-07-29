@@ -23,7 +23,11 @@ sub all {
     my @args=@_;
     my $tables=[values %{$self->{attrs}{from}[0]}];
     $self->{storage}->_cache_proxy($self->{attrs},$tables, sub{
-	$self->SUPER::all(@args);
+    	unless ($ENV{DBIC_SELECT_FROM_CACHE}){
+		$self->SUPER::all(@args);
+	} else {
+		die "WTF?";
+	}
     });
 }
 
@@ -41,7 +45,14 @@ sub next {
                         position  => $self->{pos},
                         wantarray => wantarray
                       ],$tables,sub{
-		      	$self->SUPER::next(@args);
+		        unless ($ENV{DBIC_SELECT_FROM_CACHE}){
+		      		$self->SUPER::next(@args);
+			} else {
+				die "Data must be in the cache. WTF?";
+			}
+		      },
+		      sub {
+		      	$self->{pos}++;
 		      }
     );
 }

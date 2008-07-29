@@ -1,28 +1,27 @@
 package DBIx::Class::Storage::CacheProxy;
 
-use 5.8.8;
+use 5.008008;
 use warnings;
 use strict;
 use Carp;
 use parent qw/DBIx::Class::Storage::DBI Class::Accessor::Fast/;
 use DBIx::Class::Storage::CacheProxy::Cursor;
-use Cache::Memcached;
 use Storable qw/freeze thaw store/;
 use Digest::SHA1 qw/sha1_hex/;
+use Module::Load;
 
 __PACKAGE__->mk_accessors(qw/cache/);
-$Carp::CarpLevel=0;
 =head1 NAME
 
 DBIx::Class::Storage::CacheProxy - Caching layer for DBIx::Class
 
 =head1 VERSION
 
-Version 0.01
+Version 0.02
 
 =cut
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 
 
@@ -38,6 +37,10 @@ Caching subsystem for DBIx::Class.
     __PACKAGE__->storage_type('::CacheProxy'); # That's all (:
     ...
 
+=head1 NOTE
+
+This is unstable module.
+
 =head1 METHODS
 
 =head2 new
@@ -49,9 +52,32 @@ Creates new storage object.
 sub new{
     my $class=shift;
     my $self=$class->SUPER::new(@_);
-    $self->cache(new Cache::Memcached({servers=>['127.0.0.1:11211']}));
     $self->cursor_class('DBIx::Class::Storage::CacheProxy::Cursor');
     return $self;
+}
+
+=head2 connect_info
+
+Params - cache => [ CLASSNAME, arguments to CLASSNAME->new]
+
+=cut
+
+sub connect_info{
+    my $self=shift;
+    if (@_ && (ref($_[0][-1]) eq 'HASH')){
+	my $config=$_[0][-1]->{cache};
+	$self->_connect_info_usage_cache
+	    unless $config && (ref $config eq 'ARRAY') && @$config==2;
+	my $class=__PACKAGE__."::Engine::".$config->[0];
+	load $class;	
+	$self->cache($class->new($config->[1]));
+	return $self->SUPER::connect_info(@_);
+    }
+    $self->_connect_info_usage_cache;
+}
+
+sub _connect_info_usage_cache{
+	die 'Usage: $schema->connect_info( ... , { cache=>[ CLASSNAME,{ ARGS } ] } )'."\n";
 }
 
 =head2 insert
@@ -64,7 +90,7 @@ sub insert{
     my $self = shift;
     $self->_debug("Inserting item");
     $self->SUPER::insert(@_);
-    $self->_clear_table_cache($_[0]->from)
+    $self->cache->clear_table_cache($_[0]->from)
 }
 
 =head2 update
@@ -82,7 +108,7 @@ sub update{
 	} else {
 		@res=scalar($self->SUPER::update(@_));
 	}
-	$self->_clear_table_cache($_[0]->from);
+	$self->cache->clear_table_cache($_[0]->from);
 	return @res;
 }
 
@@ -96,7 +122,7 @@ sub delete{
 	my $self=shift;
 	$self->_debug("Deleting item(s)");
 	$self->SUPER::delete(@_);
-	$self->_clear_table_cache($_[0]->from);
+	$self->cache->clear_table_cache($_[0]->from);
 }
 
 =head2 select_single
@@ -107,10 +133,12 @@ Hook for selection of single row. Multiple rows support are in DBIx::Class::Stor
 
 sub select_single{
     my $self=shift;
+#    use Data::Dumper;
+#    die Dumper $self->schema;
     my @args=@_;
     my @tables=values %{$args[0][0]};
     $self->_cache_proxy(\@_,\@tables,sub {
-	$self->SUPER::select_single(@args);
+	$self->SUPER::select_single(@args) unless $ENV{DBIC_SELECT_FROM_CACHE};
     });
 }
 
@@ -127,55 +155,17 @@ sub _serialize_params{
     sha1_hex(freeze($params));
 }
 
-sub _store_into_table_cache{
-	my $self=shift;
-	$self->_debug("Appending to table cache");
-	my %params=@_;
-	my $tables=$params{tables};
-	my %tables=map {$_=>1} @$tables;
-	my $key=$params{hash};
-	# получаем количество закэшированных записей для данной таблицы
-	# дописываем новый ключ в конец массива
-	# схема:
-	# table_cache:sessions -> 10 превращается в 11
-	# table_cache_row:sessions:1 -> somekey -> DATA
-	# ...
-	# table_cache_row:sessions:10 -> somekey -> DATA
-	# table_cache_row:sessions:11 -> somekey -> DATA <==== оце ми пишемо
-	# для кожної таблиці:
-	foreach my $table (keys %tables){
-		$self->_debug("=>	$table");
-		$self->cache->add("table_cache:$table",0);# а може ії немає
-		my $row=$self->cache->incr("table_cache:$table");# тільки incr/decr атомарні
-		$self->cache->set("table_cache_row:$table:$row"=>$key);
-	}
-}
-
-sub _clear_table_cache{
-	my $self=shift;
-	$self->_debug("Clearing table cache");
-	my $table=shift; # тільки одня таблиця. боронь мене боже від багатьох таблиць T_T
-	my $cache=$self->cache;
-	return unless my $array_size=$cache->get("table_cache:$table");
-	$self->cache->delete("table_cache:$table");
-	foreach my $row (1..$array_size){
-		my $data_ptr=$cache->get("table_cache_row:$table:$row");
-		$self->_debug("=>	[$row] $data_ptr");
-		$cache->delete("table_cache_row:$table:$row");
-		$cache->delete("$data_ptr");
-	}
-	
-}
-
 sub _cache_proxy{
     my $self=shift;
     my $key=shift;
     my $tables=shift;
     confess "Param \$tables must be array reference\n" if ref($tables) ne "ARRAY";
     my $sub=shift;
+    my $cache_sub=shift;
     $self->_debug("Searching in cache for key ".$self->_serialize_params($key));
     if (my $encoded_data=$self->cache->get($self->_serialize_params($key))){
 	$self->_debug("Found in cache");
+	$cache_sub->() if $cache_sub;
 	my $cached_data = $encoded_data;
 	if (ref $cached_data eq 'SCALAR'){
 	    $self->_debug("    (scalar)");
@@ -195,8 +185,7 @@ sub _cache_proxy{
 	}
 	$self->_debug("Storing data");
 	my $key_hash=$self->_serialize_params($key);
-	$self->cache->set($key_hash=>$result_ref);
-	$self->_store_into_table_cache(tables=>$tables,hash=>$key_hash);
+	$self->cache->store_into_table_cache(tables=>$tables,hash=>$key_hash,data=>$result_ref);
 	return wantarray ? @$result_ref : $$result_ref;
     }
 }

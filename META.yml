@@ -3,23 +3,30 @@ abstract: 'Caching layer for DBIx::Class'
 author:
   - 'Andrey Kostenko <andrey@kostenko.name>'
 build_requires:
+  Cache::FastMmap: 0
+  DBD::SQLite: 0
   Test::More: 0
 distribution_type: module
-generated_by: 'Module::Install version 0.72'
+generated_by: 'Module::Install version 0.76'
 license: perl
 meta-spec:
-  url: http://module-build.sourceforge.net/META-spec-v1.3.html
-  version: 1.3
+  url: http://module-build.sourceforge.net/META-spec-v1.4.html
+  version: 1.4
 name: DBIx-Class-Storage-CacheProxy
 no_index:
   directory:
     - inc
     - t
-requires:
+  libtest: []
+recommends:
+  Cache::FastMmap: 0
   Cache::Memcached: 0
+requires:
   DBIx::Class: 0.08010
   Digest::SHA: 0
   Storable: 0
   parent: 0
   perl: 5.8.8
-version: 0.01
+resources:
+  license: http://dev.perl.org/licenses/
+version: 0.02
