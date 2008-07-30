@@ -36,7 +36,7 @@ ok(@results==($test->search->all),'Comparing cached and uncached results');
 
 is(scalar(@results),10,'Select all');
 
-my $rs=$test->search;
+$rs=$test->search;
 my $is_next;
 my $i=1;
 my $row;

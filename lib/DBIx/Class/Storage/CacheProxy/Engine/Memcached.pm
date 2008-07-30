@@ -1,9 +1,25 @@
 package DBIx::Class::Storage::CacheProxy::Engine::Memcached;
 
+=head1 NAME
+
+DBIx::Class::Storage::CacheProxy::Engine::Memcached
+
+=head1 DESCRIPTION
+
+Memcached enging for DBIx::Class::Storage::CacheProxy
+
+=head1 METHODS
+
+=cut
+
 use parent 'Class::Accessor::Fast';
 use Cache::Memcached;
 
 __PACKAGE__->mk_accessors('cache');
+
+=head2 new
+
+=cut
 
 sub new{
     my $class=shift;
@@ -13,6 +29,10 @@ sub new{
 }
 
 sub _debug{};
+
+=head2 store_into_table_cache
+
+=cut
 
 sub store_into_table_cache{
 	my $self=shift;
@@ -39,6 +59,10 @@ sub store_into_table_cache{
 	$self->cache->set($key=>$params{data});
 }
 
+=head2 clear_table_cache
+
+=cut
+
 sub clear_table_cache{
 	my $self=shift;
 	$self->_debug("Clearing table cache");
@@ -54,6 +78,10 @@ sub clear_table_cache{
 	}
 	
 }
+
+=head2 get
+
+=cut
 
 sub get{
     shift->cache->get(@_);
